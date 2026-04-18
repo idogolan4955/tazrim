@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
     update: {
       salesAmount: body.salesAmount ?? 0,
       forecastAmount: body.forecastAmount ?? null,
+      actualPurchase: body.actualPurchase ?? null,
       purchaseRatio: body.purchaseRatio ?? 0.35,
       notes: body.notes ?? null,
     },
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest) {
       month: body.month,
       salesAmount: body.salesAmount ?? 0,
       forecastAmount: body.forecastAmount ?? null,
+      actualPurchase: body.actualPurchase ?? null,
       purchaseRatio: body.purchaseRatio ?? 0.35,
       notes: body.notes ?? null,
     },

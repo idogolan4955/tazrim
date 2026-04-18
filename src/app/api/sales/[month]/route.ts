@@ -10,6 +10,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ mo
   const data: Record<string, unknown> = {};
   if (body.salesAmount !== undefined) data.salesAmount = body.salesAmount;
   if (body.forecastAmount !== undefined) data.forecastAmount = body.forecastAmount;
+  if (body.actualPurchase !== undefined) data.actualPurchase = body.actualPurchase;
   if (body.purchaseRatio !== undefined) data.purchaseRatio = body.purchaseRatio;
   if (body.notes !== undefined) data.notes = body.notes;
   const s = await prisma.monthlySales.update({ where: { month }, data });

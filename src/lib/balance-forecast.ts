@@ -50,15 +50,16 @@ export async function buildBalanceForecast(horizonMonths = 12): Promise<BalanceP
     const cash = lastBalanceAtOrBefore(projection.combined.series, endKey);
 
     // Inventory: opening + Σ(purchase - COGS) for each month from inventoryDate .. endOfMonth
+    // Prefer actualPurchase if set, otherwise use planned (base × purchaseRatio).
     let inventory = inventoryOpening;
     for (const s of sales) {
       const sMonthEnd = endOfMonthForYM(s.month);
       if (sMonthEnd < inventoryDate) continue;
       if (sMonthEnd > endOfMonth) continue;
       const base = toNumber(s.salesAmount) || toNumber(s.forecastAmount);
-      if (base <= 0) continue;
-      const ratio = toNumber(s.purchaseRatio);
-      const purchase = base * ratio;
+      if (base <= 0 && toNumber(s.actualPurchase) <= 0) continue;
+      const planned = base * toNumber(s.purchaseRatio);
+      const purchase = toNumber(s.actualPurchase) > 0 ? toNumber(s.actualPurchase) : planned;
       const cogs = base * cogsRatio;
       inventory += purchase - cogs;
     }

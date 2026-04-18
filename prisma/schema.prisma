@@ -162,6 +162,7 @@ model MonthlySales {
   month          String   @unique // YYYY-MM
   salesAmount    Decimal  @db.Decimal(14, 2)
   forecastAmount Decimal? @db.Decimal(14, 2)
+  actualPurchase Decimal? @db.Decimal(14, 2)
   purchaseRatio  Decimal  @default(0.35) @db.Decimal(6, 4)
   notes          String?
   createdAt      DateTime @default(now())

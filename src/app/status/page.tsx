@@ -12,6 +12,9 @@ interface Summary {
   discountedReceivable: number;
   payableChecks: number;
   receivablesTotal: number;
+  liquidAssets: number;
+  inventoryAssets: number;
+  workingCapital: number;
   assets: number;
   liabilities: number;
   equity: number;
@@ -31,10 +34,13 @@ interface BalancePoint {
   inventory: number;
   receivableChecks: number;
   receivablesLedger: number;
+  liquidAssets: number;
+  inventoryAssets: number;
   assets: number;
   loans: number;
   payableChecks: number;
   liabilities: number;
+  workingCapital: number;
   equity: number;
 }
 
@@ -90,16 +96,31 @@ export default function StatusPage() {
       <h1>סטטוס ומאזן עסק</h1>
 
       {summary ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi label="סך נכסים" value={summary.assets} tone="good" />
-          <Kpi label="סך התחייבויות" value={summary.liabilities} tone="bad" />
-          <Kpi label="הון עצמי" value={summary.equity} tone={summary.equity >= 0 ? "good" : "bad"} hint="נכסים - התחייבויות" />
-          <Kpi label="יתרת מזומנים" value={summary.currentTotal} />
-          <Kpi label="סך הלוואות" value={summary.totalLoans} tone="bad" />
-          <Kpi label="שיקים דחויים ללקבל" value={summary.postDatedReceivable} />
-          <Kpi label="שיקים לפירעון" value={summary.payableChecks} tone="bad" />
-          <Kpi label="כרטסת לקוחות" value={summary.receivablesTotal} />
-        </div>
+        <>
+          <section>
+            <h2 className="mb-3">מבט על</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Kpi label="כסף זמין" value={summary.liquidAssets} tone="good" hint="מזומן + שיקים ללקבל + לקוחות" />
+              <Kpi label="הון במלאי" value={summary.inventoryAssets} hint="שווי סחורה במלאי" />
+              <Kpi label="סך נכסים" value={summary.assets} tone="good" hint="כסף זמין + מלאי" />
+              <Kpi label="סך התחייבויות" value={summary.liabilities} tone="bad" hint="הלוואות + שיקים לפרעון" />
+              <Kpi label="הון חוזר" value={summary.workingCapital} tone={summary.workingCapital >= 0 ? "good" : "bad"} hint="כסף זמין - התחייבויות" />
+              <Kpi label="הון עצמי" value={summary.equity} tone={summary.equity >= 0 ? "good" : "bad"} hint="נכסים - התחייבויות" />
+              <Kpi label="סך הלוואות" value={summary.totalLoans} tone="bad" />
+              <Kpi label="שיקים לפירעון" value={summary.payableChecks} tone="bad" />
+            </div>
+          </section>
+
+          <section>
+            <h2 className="mb-3">פירוט נכסים והתחייבויות</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Kpi label="יתרת מזומנים" value={summary.currentTotal} />
+              <Kpi label="שיקים דחויים ללקבל" value={summary.postDatedReceivable} />
+              <Kpi label="כרטסת לקוחות" value={summary.receivablesTotal} />
+              <Kpi label="מלאי" value={summary.totalInventory} />
+            </div>
+          </section>
+        </>
       ) : loading ? <div className="card">טוען...</div> : null}
 
       <section className="card grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
@@ -153,7 +174,8 @@ export default function StatusPage() {
                   <YAxis orientation="right" tickFormatter={(v) => new Intl.NumberFormat("he-IL").format(v)} />
                   <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ direction: "rtl" }} />
                   <Legend />
-                  <Line type="monotone" dataKey="assets" stroke="#10b981" name="נכסים" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="liquidAssets" stroke="#10b981" name="כסף זמין" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="inventoryAssets" stroke="#f59e0b" name="הון במלאי" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="liabilities" stroke="#ef4444" name="התחייבויות" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="equity" stroke="#1f4df5" name="הון עצמי" strokeWidth={2.5} dot={false} />
                 </LineChart>
@@ -164,16 +186,22 @@ export default function StatusPage() {
               <table className="table text-xs">
                 <thead>
                   <tr>
-                    <th>חודש</th>
+                    <th rowSpan={2}>חודש</th>
+                    <th colSpan={3} className="text-center bg-emerald-50">כסף זמין</th>
+                    <th rowSpan={2} className="bg-emerald-50">סה״כ זמין</th>
+                    <th rowSpan={2} className="bg-amber-50">הון במלאי</th>
+                    <th rowSpan={2}>סך נכסים</th>
+                    <th colSpan={2} className="text-center bg-red-50">התחייבויות</th>
+                    <th rowSpan={2} className="bg-red-50">סה״כ חוב</th>
+                    <th rowSpan={2} className="text-brand-700">הון חוזר</th>
+                    <th rowSpan={2} className="text-brand-700">הון עצמי</th>
+                  </tr>
+                  <tr>
                     <th>מזומן</th>
-                    <th>מלאי</th>
                     <th>שיקים ללקבל</th>
                     <th>לקוחות</th>
-                    <th className="text-emerald-700">נכסים</th>
                     <th>הלוואות</th>
-                    <th>שיקים לפירעון</th>
-                    <th className="text-red-700">התחייבויות</th>
-                    <th className="text-brand-700">הון עצמי</th>
+                    <th>שיקים לפרעון</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -181,13 +209,15 @@ export default function StatusPage() {
                     <tr key={p.month}>
                       <td className="font-medium">{p.month}</td>
                       <td className={p.cash >= 0 ? "" : "text-red-700"}>{formatCurrency(p.cash)}</td>
-                      <td>{formatCurrency(p.inventory)}</td>
                       <td>{formatCurrency(p.receivableChecks)}</td>
                       <td>{formatCurrency(p.receivablesLedger)}</td>
-                      <td className="text-emerald-700 font-semibold">{formatCurrency(p.assets)}</td>
+                      <td className="bg-emerald-50 text-emerald-700 font-semibold">{formatCurrency(p.liquidAssets)}</td>
+                      <td className="bg-amber-50 text-amber-700">{formatCurrency(p.inventoryAssets)}</td>
+                      <td className="font-semibold">{formatCurrency(p.assets)}</td>
                       <td>{formatCurrency(p.loans)}</td>
                       <td>{formatCurrency(p.payableChecks)}</td>
-                      <td className="text-red-700 font-semibold">{formatCurrency(p.liabilities)}</td>
+                      <td className="bg-red-50 text-red-700 font-semibold">{formatCurrency(p.liabilities)}</td>
+                      <td className={`font-bold ${p.workingCapital >= 0 ? "text-brand-700" : "text-red-700"}`}>{formatCurrency(p.workingCapital)}</td>
                       <td className={`font-bold ${p.equity >= 0 ? "text-brand-700" : "text-red-700"}`}>{formatCurrency(p.equity)}</td>
                     </tr>
                   ))}

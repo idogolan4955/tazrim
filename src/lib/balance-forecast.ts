@@ -10,11 +10,14 @@ export interface BalancePoint {
   inventory: number;
   receivableChecks: number;
   receivablesLedger: number;
-  assets: number;
+  liquidAssets: number;   // cash + receivable checks + receivables ledger
+  inventoryAssets: number; // alias for inventory (capital tied in goods)
+  assets: number;          // liquidAssets + inventoryAssets
   loans: number;
   payableChecks: number;
   liabilities: number;
-  equity: number;
+  workingCapital: number;  // liquidAssets - liabilities
+  equity: number;          // assets - liabilities
 }
 
 export async function buildBalanceForecast(horizonMonths = 12): Promise<BalancePoint[]> {
@@ -94,8 +97,11 @@ export async function buildBalanceForecast(horizonMonths = 12): Promise<BalanceP
       loansBalance += rem;
     }
 
-    const assets = cash + inventory + receivableChecks + receivablesLedgerTotal;
+    const liquidAssets = cash + receivableChecks + receivablesLedgerTotal;
+    const inventoryAssets = inventory;
+    const assets = liquidAssets + inventoryAssets;
     const liabilities = loansBalance + payableChecks;
+    const workingCapital = liquidAssets - liabilities;
     const equity = assets - liabilities;
 
     points.push({
@@ -104,10 +110,13 @@ export async function buildBalanceForecast(horizonMonths = 12): Promise<BalanceP
       inventory: round2(inventory),
       receivableChecks: round2(receivableChecks),
       receivablesLedger: round2(receivablesLedgerTotal),
+      liquidAssets: round2(liquidAssets),
+      inventoryAssets: round2(inventoryAssets),
       assets: round2(assets),
       loans: round2(loansBalance),
       payableChecks: round2(payableChecks),
       liabilities: round2(liabilities),
+      workingCapital: round2(workingCapital),
       equity: round2(equity),
     });
   }

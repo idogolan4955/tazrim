@@ -30,6 +30,9 @@ interface SummaryResponse {
   discountedReceivable: number;
   payableChecks: number;
   receivablesTotal: number;
+  liquidAssets: number;
+  inventoryAssets: number;
+  workingCapital: number;
   assets: number;
   liabilities: number;
   equity: number;
@@ -177,15 +180,21 @@ export function DashboardClient({ partnerMode = false }: { partnerMode?: boolean
       {summary ? (
         <section>
           <h2 className="mb-3">מאזן עסקי</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kpi label="סך נכסים" value={summary.assets} tone="good" hint="מזומן + שיקים דחויים + מלאי + לקוחות" />
-            <Kpi label="סך התחייבויות" value={summary.liabilities} tone="bad" hint="הלוואות + שיקים לפירעון" />
-            <Kpi label="הון עצמי" value={summary.equity} tone={summary.equity >= 0 ? "good" : "bad"} />
-            <Kpi label="מלאי" value={summary.totalInventory} />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+            <Kpi label="כסף זמין" value={summary.liquidAssets} tone="good" hint="מזומן + שיקים ללקבל + לקוחות" />
+            <Kpi label="הון במלאי" value={summary.inventoryAssets} hint="שווי סחורה" />
+            <Kpi label="סך נכסים" value={summary.assets} tone="good" hint="זמין + מלאי" />
+            <Kpi label="סך התחייבויות" value={summary.liabilities} tone="bad" hint="הלוואות + שיקים לפרעון" />
+            <Kpi label="הון חוזר" value={summary.workingCapital} tone={summary.workingCapital >= 0 ? "good" : "bad"} hint="כסף זמין - חובות" />
+            <Kpi label="הון עצמי" value={summary.equity} tone={summary.equity >= 0 ? "good" : "bad"} hint="נכסים - חובות" />
             <Kpi label="סך הלוואות" value={summary.totalLoans} tone="bad" />
-            <Kpi label="שיקים דחויים ללקבל" value={summary.postDatedReceivable} />
             <Kpi label="שיקים לפירעון" value={summary.payableChecks} tone="bad" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Kpi label="יתרת מזומנים" value={summary.currentTotal} />
+            <Kpi label="שיקים דחויים ללקבל" value={summary.postDatedReceivable} />
             <Kpi label="כרטסת לקוחות" value={summary.receivablesTotal} />
+            <Kpi label="מלאי" value={summary.totalInventory} />
           </div>
         </section>
       ) : null}

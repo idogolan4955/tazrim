@@ -35,9 +35,13 @@ export async function GET() {
     .reduce((s, c) => s + toNumber(c.amount), 0);
   const receivablesTotal = receivables.reduce((s, r) => s + toNumber(r.amount), 0);
 
-  const assets = currentTotal + postDatedReceivable + totalInventory + receivablesTotal;
+  // Split assets into liquid (cash + receivables) vs capital (inventory)
+  const liquidAssets = currentTotal + postDatedReceivable + receivablesTotal;
+  const inventoryAssets = totalInventory;
+  const assets = liquidAssets + inventoryAssets;
   const liabilities = totalLoans + payableChecks;
   const equity = assets - liabilities;
+  const workingCapital = liquidAssets - liabilities; // how much liquidity stands against debt
 
   return NextResponse.json({
     currentTotal,
@@ -47,6 +51,9 @@ export async function GET() {
     discountedReceivable,
     payableChecks,
     receivablesTotal,
+    liquidAssets,
+    inventoryAssets,
+    workingCapital,
     assets,
     liabilities,
     equity,

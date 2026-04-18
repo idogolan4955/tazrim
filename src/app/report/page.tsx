@@ -29,6 +29,9 @@ interface SummaryResponse {
   discountedReceivable: number;
   payableChecks: number;
   receivablesTotal: number;
+  liquidAssets: number;
+  inventoryAssets: number;
+  workingCapital: number;
   assets: number;
   liabilities: number;
   equity: number;
@@ -39,10 +42,13 @@ interface BalancePoint {
   inventory: number;
   receivableChecks: number;
   receivablesLedger: number;
+  liquidAssets: number;
+  inventoryAssets: number;
   assets: number;
   loans: number;
   payableChecks: number;
   liabilities: number;
+  workingCapital: number;
   equity: number;
 }
 interface LedgerRow {
@@ -138,10 +144,14 @@ export default function ReportPage() {
           <Kpi label="צפי בעוד 3 חודשים" value={combined.plus3m} tone={combined.plus3m >= 0 ? "good" : "bad"} />
           <Kpi label="צפי בעוד 6 חודשים" value={combined.plus6m} tone={combined.plus6m >= 0 ? "good" : "bad"} />
           <Kpi label="צפי בעוד 12 חודשים" value={combined.plus12m} tone={combined.plus12m >= 0 ? "good" : "bad"} />
-          <Kpi label="סך נכסים" value={summary.assets} tone="good" />
+          <Kpi label="כסף זמין" value={summary.liquidAssets} tone="good" hint="מזומן + שיקים + לקוחות" />
+          <Kpi label="הון במלאי" value={summary.inventoryAssets} hint="סחורה" />
           <Kpi label="סך התחייבויות" value={summary.liabilities} tone="bad" />
           <Kpi label="הון עצמי" value={summary.equity} tone={summary.equity >= 0 ? "good" : "bad"} />
+          <Kpi label="הון חוזר" value={summary.workingCapital} tone={summary.workingCapital >= 0 ? "good" : "bad"} hint="זמין - חובות" />
+          <Kpi label="סך נכסים" value={summary.assets} />
           <Kpi label="סך הלוואות" value={summary.totalLoans} />
+          <Kpi label="שיקים לפרעון" value={summary.payableChecks} tone="bad" />
         </div>
       </section>
 
@@ -197,16 +207,20 @@ export default function ReportPage() {
           <table className="table text-xs">
             <thead>
               <tr>
-                <th>חודש</th>
+                <th rowSpan={2}>חודש</th>
+                <th colSpan={3} className="text-center bg-emerald-50">כסף זמין</th>
+                <th rowSpan={2} className="bg-emerald-50">סה״כ זמין</th>
+                <th rowSpan={2} className="bg-amber-50">מלאי</th>
+                <th rowSpan={2}>סך נכסים</th>
+                <th rowSpan={2} className="bg-red-50">הלוואות</th>
+                <th rowSpan={2} className="bg-red-50">שיקים לפרעון</th>
+                <th rowSpan={2} className="text-brand-700">הון חוזר</th>
+                <th rowSpan={2} className="text-brand-700">הון עצמי</th>
+              </tr>
+              <tr>
                 <th>מזומן</th>
-                <th>מלאי</th>
                 <th>שיקים ללקבל</th>
                 <th>לקוחות</th>
-                <th>נכסים</th>
-                <th>הלוואות</th>
-                <th>שיקים לפרעון</th>
-                <th>התחייבויות</th>
-                <th>הון עצמי</th>
               </tr>
             </thead>
             <tbody>
@@ -214,13 +228,14 @@ export default function ReportPage() {
                 <tr key={p.month}>
                   <td className="font-medium">{p.month}</td>
                   <td>{formatCurrency(p.cash)}</td>
-                  <td>{formatCurrency(p.inventory)}</td>
                   <td>{formatCurrency(p.receivableChecks)}</td>
                   <td>{formatCurrency(p.receivablesLedger)}</td>
-                  <td className="text-emerald-700">{formatCurrency(p.assets)}</td>
+                  <td className="bg-emerald-50 text-emerald-700 font-semibold">{formatCurrency(p.liquidAssets)}</td>
+                  <td className="bg-amber-50 text-amber-700">{formatCurrency(p.inventoryAssets)}</td>
+                  <td className="font-semibold">{formatCurrency(p.assets)}</td>
                   <td>{formatCurrency(p.loans)}</td>
                   <td>{formatCurrency(p.payableChecks)}</td>
-                  <td className="text-red-700">{formatCurrency(p.liabilities)}</td>
+                  <td className={`font-bold ${p.workingCapital >= 0 ? "text-brand-700" : "text-red-700"}`}>{formatCurrency(p.workingCapital)}</td>
                   <td className={`font-bold ${p.equity >= 0 ? "text-brand-700" : "text-red-700"}`}>{formatCurrency(p.equity)}</td>
                 </tr>
               ))}

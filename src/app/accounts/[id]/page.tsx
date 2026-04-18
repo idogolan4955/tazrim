@@ -13,7 +13,6 @@ interface Account {
   color: string;
   openingBalance: string;
   openingBalanceDate: string;
-  inventory: string;
   notes: string | null;
 }
 
@@ -152,7 +151,6 @@ export default function AccountDetailPage() {
 function OpeningBalanceBar({ account, onSaved }: { account: Account; onSaved: () => void }) {
   const [openingBalance, setOpeningBalance] = useState(account.openingBalance);
   const [openingBalanceDate, setOpeningBalanceDate] = useState(account.openingBalanceDate.slice(0, 10));
-  const [inventory, setInventory] = useState(account.inventory);
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -163,7 +161,6 @@ function OpeningBalanceBar({ account, onSaved }: { account: Account; onSaved: ()
       body: JSON.stringify({
         openingBalance: parseFloat(openingBalance || "0"),
         openingBalanceDate,
-        inventory: parseFloat(inventory || "0"),
       }),
     });
     setSaving(false);
@@ -171,7 +168,7 @@ function OpeningBalanceBar({ account, onSaved }: { account: Account; onSaved: ()
   }
 
   return (
-    <div className="card grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+    <div className="card grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
       <div>
         <label className="label">יתרת פתיחה</label>
         <input className="input" type="number" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} />
@@ -179,10 +176,6 @@ function OpeningBalanceBar({ account, onSaved }: { account: Account; onSaved: ()
       <div>
         <label className="label">נכון לתאריך</label>
         <input className="input" type="date" value={openingBalanceDate} onChange={(e) => setOpeningBalanceDate(e.target.value)} />
-      </div>
-      <div>
-        <label className="label">מלאי משויך</label>
-        <input className="input" type="number" step="0.01" value={inventory} onChange={(e) => setInventory(e.target.value)} />
       </div>
       <div className="flex justify-end">
         <button className="btn-primary" disabled={saving} onClick={save}>{saving ? "שומר..." : "עדכן"}</button>

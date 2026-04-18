@@ -3,21 +3,26 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-guard";
 import { toNumber } from "@/lib/utils";
 import { buildProjection } from "@/lib/projection";
+import { getSettings } from "@/lib/settings";
 
 export async function GET() {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const [accounts, loans, checks, receivables] = await Promise.all([
-    prisma.account.findMany(),
+  const [loans, checks, receivables, settings] = await Promise.all([
     prisma.loan.findMany(),
     prisma.check.findMany({ where: { status: "PENDING" } }),
     prisma.receivable.findMany(),
+    getSettings(["opening_inventory", "opening_inventory_date", "cogs_ratio"]),
   ]);
 
   const { byAccount } = await buildProjection({ horizonMonths: 12 });
   const currentTotal = byAccount.reduce((s, a) => s + a.current, 0);
-  const totalInventory = accounts.reduce((s, a) => s + toNumber(a.inventory), 0);
+
+  // Global inventory: use the stored opening as current inventory (a more sophisticated
+  // computation is available in /api/balance-forecast for future-dated values).
+  const totalInventory = parseFloat(settings.opening_inventory || "0");
+
   const totalLoans = loans.reduce((s, l) => s + toNumber(l.principal), 0);
   const postDatedReceivable = checks
     .filter((c) => c.kind === "RECEIVABLE_DEFERRED")
@@ -30,10 +35,6 @@ export async function GET() {
     .reduce((s, c) => s + toNumber(c.amount), 0);
   const receivablesTotal = receivables.reduce((s, r) => s + toNumber(r.amount), 0);
 
-  // Assets - Liabilities (simple view):
-  // Assets: cash (current) + post-dated receivable checks + inventory + customer receivables
-  // Liabilities: loans + payable checks
-  // (Discounted checks are already reflected in cash, not added again.)
   const assets = currentTotal + postDatedReceivable + totalInventory + receivablesTotal;
   const liabilities = totalLoans + payableChecks;
   const equity = assets - liabilities;

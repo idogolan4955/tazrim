@@ -14,7 +14,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.color !== undefined) data.color = body.color;
   if (body.openingBalance !== undefined) data.openingBalance = body.openingBalance;
   if (body.openingBalanceDate !== undefined) data.openingBalanceDate = new Date(body.openingBalanceDate);
-  if (body.inventory !== undefined) data.inventory = body.inventory;
   if (body.notes !== undefined) data.notes = body.notes;
   const acc = await prisma.account.update({ where: { id }, data });
   return NextResponse.json(acc);

@@ -44,9 +44,14 @@ export async function buildProjection(opts: { accountIds?: string[]; horizonMont
     orderBy: { createdAt: "asc" },
   });
 
+  const purchaseEventsByAccount = await buildPurchaseEvents(asOf, end);
+
   const results: AccountProjection[] = [];
   for (const acc of accounts) {
     const events = await gatherEvents(acc.id, asOf, end);
+    const purchaseEvents = purchaseEventsByAccount.get(acc.id) ?? [];
+    events.push(...purchaseEvents);
+
     const openingBalance = toNumber(acc.openingBalance);
     const openingDate = stripTime(acc.openingBalanceDate);
 
@@ -190,11 +195,54 @@ async function gatherEvents(accountId: string, asOf: Date, end: Date): Promise<P
   return events;
 }
 
+/**
+ * Derive projected purchase expense events from monthly sales rows.
+ * Purchases are assigned to the account identified by `default_purchase_account_id` setting.
+ * If the setting isn't set, no purchase events are generated.
+ *
+ * For each month that has either forecastAmount or salesAmount > 0, we schedule an expense
+ * on the last day of that month equal to (salesAmount || forecast) × purchaseRatio.
+ * Past-month sales don't project (only months strictly after asOf).
+ */
+async function buildPurchaseEvents(asOf: Date, end: Date): Promise<Map<string, ProjectionEvent[]>> {
+  const out = new Map<string, ProjectionEvent[]>();
+  const acct = await prisma.setting.findUnique({ where: { key: "default_purchase_account_id" } });
+  if (!acct?.value) return out;
+  const accountId = acct.value;
+  const sales = await prisma.monthlySales.findMany();
+  for (const s of sales) {
+    const monthDate = monthEndDate(s.month);
+    if (monthDate < asOf || monthDate > end) continue;
+    const base = toNumber(s.salesAmount) || toNumber(s.forecastAmount);
+    if (base <= 0) continue;
+    const ratio = toNumber(s.purchaseRatio);
+    const purchase = base * ratio;
+    if (purchase <= 0) continue;
+    const ev: ProjectionEvent = {
+      date: monthDate,
+      accountId,
+      amount: -purchase,
+      label: `רכש חזוי ${s.month}`,
+      source: "PURCHASE",
+    };
+    const arr = out.get(accountId) ?? [];
+    arr.push(ev);
+    out.set(accountId, arr);
+  }
+  return out;
+}
+
+function monthEndDate(ym: string): Date {
+  const [y, m] = ym.split("-").map((n) => parseInt(n, 10));
+  const d = new Date(y, m, 0); // last day of month m
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 async function resolveLoanRate(loan: { type: "FIXED" | "PRIME_LINKED"; spread: unknown; fixedRate: unknown | null }): Promise<number> {
   if (loan.type === "FIXED") {
     return toNumber(loan.fixedRate);
   }
-  // PRIME_LINKED: prime = BOI + 1.5
   const boi = await prisma.setting.findUnique({ where: { key: "boi_base_rate" } });
   const base = boi ? parseFloat(boi.value) : parseFloat(process.env.BOI_BASE_RATE_FALLBACK ?? "4.5");
   const prime = base + 1.5;
@@ -208,7 +256,6 @@ function expandRecurrence(freq: Frequency, start: Date, from: Date, to: Date, da
     return out;
   }
   let cur = new Date(start);
-  // fast-forward to at least `from`
   while (cur < from) cur = nextStep(cur, freq);
   while (cur <= to) {
     if (freq === "MONTHLY" && dayOfMonth) {
@@ -276,7 +323,6 @@ function pickByOffset(series: DailyPoint[], asOf: Date, months: number): number 
   const target = new Date(asOf);
   target.setMonth(target.getMonth() + months);
   const key = dateKey(target);
-  // find point with date <= key, take the last one
   let last = series[0]?.balance ?? 0;
   for (const p of series) {
     if (p.date <= key) last = p.balance;

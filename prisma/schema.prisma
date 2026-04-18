@@ -74,7 +74,6 @@ model Account {
   openingBalance     Decimal   @default(0) @db.Decimal(14, 2)
   openingBalanceDate DateTime  @default(now())
   createdAt          DateTime  @default(now())
-  inventory          Decimal   @default(0) @db.Decimal(14, 2)
   notes              String?
 
   transactions Transaction[]

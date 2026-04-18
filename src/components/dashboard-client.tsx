@@ -86,8 +86,11 @@ export function DashboardClient({ partnerMode = false }: { partnerMode?: boolean
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h1>סקירה כלכלית</h1>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <h1>סקירה כלכלית</h1>
+            <a href="/report" className="btn-primary">הפק דוח תשקיף</a>
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
             {accounts.map((a) => {
               const on = selected.has(a.id);

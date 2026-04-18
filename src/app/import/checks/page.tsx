@@ -29,6 +29,8 @@ export default function ImportChecksPage() {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ created: number; errors: { index: number; reason: string }[] } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [imageNote, setImageNote] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -37,6 +39,43 @@ export default function ImportChecksPage() {
       if (a[0]) setAccountId(a[0].id);
     })();
   }, []);
+
+  async function extractFromImages(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setResult(null);
+    setImageNote(null);
+    try {
+      const collected: ParsedRow[] = [];
+      const notes: string[] = [];
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("image", file);
+        const res = await fetch("/api/checks/extract-image", { method: "POST", body: fd });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          notes.push(`[${file.name}] שגיאה: ${err.error ?? res.statusText}`);
+          continue;
+        }
+        const data = await res.json();
+        if (data.imageNotes) notes.push(`[${file.name}] ${data.imageNotes}`);
+        for (const c of data.checks ?? []) {
+          const error = validateRow(c);
+          collected.push({
+            dueDate: c.dueDate ?? null,
+            amount: typeof c.amount === "number" && c.amount > 0 ? c.amount : null,
+            counterparty: c.counterparty ?? "",
+            reference: c.reference ?? "",
+            error,
+          });
+        }
+      }
+      setRows((prev) => [...prev, ...collected]);
+      setImageNote(notes.length > 0 ? notes.join(" · ") : null);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function parse() {
     setResult(null);
@@ -156,18 +195,43 @@ export default function ImportChecksPage() {
         </div>
       </div>
 
-      <div className="card">
-        <label className="label">הדבק כאן את רשימת השיקים</label>
-        <textarea
-          className="input font-mono text-sm"
-          rows={10}
-          value={rawText}
-          onChange={(e) => setRawText(e.target.value)}
-          placeholder={"דוגמאות לפורמט (כל אחד תקף):\n15/05/2026  5000  יוסי לוי  12345\n20/05/2026, 3500, חנה כהן, 98765\n2026-06-01\t2,800\tדוד מזרחי\t55512"}
-        />
-        <div className="flex gap-2 mt-3">
-          <button className="btn-primary" onClick={parse} disabled={!rawText.trim()}>נתח</button>
-          <button className="btn" onClick={() => { setRows([]); setRawText(""); setResult(null); }}>נקה</button>
+      <div className="card flex flex-col gap-4">
+        <div>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <label className="label mb-0">העלה תמונה / צילום של שיקים — חילוץ אוטומטי</label>
+            {uploading ? <span className="text-xs text-brand-700">Claude מנתח...</span> : null}
+          </div>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={uploading}
+            onChange={(e) => extractFromImages(e.target.files)}
+            className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-600 file:text-white file:font-medium file:cursor-pointer file:hover:bg-brand-700 disabled:opacity-50"
+          />
+          <div className="text-xs text-slate-500 mt-1">
+            תומך בצילום שיקים פיזיים, טבלאות, צילומי מסך, או רשימה כתובה. ניתן להעלות כמה תמונות בבת אחת. כל שורה מזוהה תיווסף לטבלה למטה לבדיקה.
+          </div>
+          {imageNote ? (
+            <div className="mt-2 text-xs text-slate-600 bg-slate-50 rounded p-2 whitespace-pre-wrap">
+              {imageNote}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="border-t border-slate-100 pt-3">
+          <label className="label">או — הדבק רשימה כטקסט</label>
+          <textarea
+            className="input font-mono text-sm"
+            rows={6}
+            value={rawText}
+            onChange={(e) => setRawText(e.target.value)}
+            placeholder={"15/05/2026  5000  יוסי לוי  12345\n20/05/2026, 3500, חנה כהן, 98765\n2026-06-01\t2,800\tדוד מזרחי\t55512"}
+          />
+          <div className="flex gap-2 mt-3">
+            <button className="btn-primary" onClick={parse} disabled={!rawText.trim()}>נתח טקסט</button>
+            <button className="btn" onClick={() => { setRows([]); setRawText(""); setResult(null); setImageNote(null); }}>נקה הכל</button>
+          </div>
         </div>
       </div>
 
@@ -259,6 +323,13 @@ export default function ImportChecksPage() {
       ) : null}
     </div>
   );
+}
+
+function validateRow(c: { dueDate?: string | null; amount?: number | null }): string | null {
+  if (!c.dueDate) return "תאריך פרעון חסר";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(c.dueDate)) return "תאריך לא תקין";
+  if (c.amount == null || !Number.isFinite(c.amount) || c.amount <= 0) return "סכום חסר";
+  return null;
 }
 
 function parseDate(s: string): string | null {

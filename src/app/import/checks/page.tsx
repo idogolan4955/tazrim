@@ -30,6 +30,7 @@ export default function ImportChecksPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ created: number; errors: { index: number; reason: string }[] } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [imageNote, setImageNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,39 +43,62 @@ export default function ImportChecksPage() {
 
   async function extractFromImages(files: FileList | null) {
     if (!files || files.length === 0) return;
+    const fileList = Array.from(files);
     setUploading(true);
     setResult(null);
     setImageNote(null);
-    try {
-      const collected: ParsedRow[] = [];
-      const notes: string[] = [];
-      for (const file of Array.from(files)) {
-        const fd = new FormData();
-        fd.append("image", file);
+    setProgress({ done: 0, total: fileList.length });
+
+    const CONCURRENCY = 4;
+    let doneCount = 0;
+    const notes: string[] = [];
+
+    async function processOne(file: File) {
+      const fd = new FormData();
+      fd.append("image", file);
+      try {
         const res = await fetch("/api/checks/extract-image", { method: "POST", body: fd });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: res.statusText }));
           notes.push(`[${file.name}] שגיאה: ${err.error ?? res.statusText}`);
-          continue;
+          return;
         }
         const data = await res.json();
         if (data.imageNotes) notes.push(`[${file.name}] ${data.imageNotes}`);
+        const newRows: ParsedRow[] = [];
         for (const c of data.checks ?? []) {
-          const error = validateRow(c);
-          collected.push({
+          newRows.push({
             dueDate: c.dueDate ?? null,
             amount: typeof c.amount === "number" && c.amount > 0 ? c.amount : null,
             counterparty: c.counterparty ?? "",
             reference: c.reference ?? "",
-            error,
+            error: validateRow(c),
           });
         }
+        // Stream results into the table as each image finishes.
+        if (newRows.length > 0) setRows((prev) => [...prev, ...newRows]);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        notes.push(`[${file.name}] שגיאה ברשת: ${msg}`);
+      } finally {
+        doneCount += 1;
+        setProgress({ done: doneCount, total: fileList.length });
       }
-      setRows((prev) => [...prev, ...collected]);
-      setImageNote(notes.length > 0 ? notes.join(" · ") : null);
-    } finally {
-      setUploading(false);
     }
+
+    // Simple concurrency pool — always keep CONCURRENCY workers running.
+    const queue = [...fileList];
+    const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const file = queue.shift();
+        if (file) await processOne(file);
+      }
+    });
+    await Promise.all(workers);
+
+    setImageNote(notes.length > 0 ? notes.join(" · ") : null);
+    setUploading(false);
+    setProgress(null);
   }
 
   function parse() {
@@ -198,9 +222,21 @@ export default function ImportChecksPage() {
       <div className="card flex flex-col gap-4">
         <div>
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-            <label className="label mb-0">העלה תמונה / צילום של שיקים — חילוץ אוטומטי</label>
-            {uploading ? <span className="text-xs text-brand-700">Claude מנתח...</span> : null}
+            <label className="label mb-0">העלה תמונות / צילומים של שיקים — חילוץ אוטומטי</label>
+            {uploading ? (
+              <span className="text-xs text-brand-700">
+                Gemini מנתח{progress ? ` (${progress.done}/${progress.total})` : "..."}
+              </span>
+            ) : null}
           </div>
+          {uploading && progress && progress.total > 1 ? (
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
+              <div
+                className="h-full bg-brand-500 transition-all"
+                style={{ width: `${(progress.done / progress.total) * 100}%` }}
+              />
+            </div>
+          ) : null}
           <input
             type="file"
             accept="image/*"
@@ -210,7 +246,7 @@ export default function ImportChecksPage() {
             className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-600 file:text-white file:font-medium file:cursor-pointer file:hover:bg-brand-700 disabled:opacity-50"
           />
           <div className="text-xs text-slate-500 mt-1">
-            תומך בצילום שיקים פיזיים, טבלאות, צילומי מסך, או רשימה כתובה. ניתן להעלות כמה תמונות בבת אחת. כל שורה מזוהה תיווסף לטבלה למטה לבדיקה.
+            תומך בצילום שיקים פיזיים, טבלאות, צילומי מסך, או רשימה כתובה. בחר מספר תמונות בבת אחת — הן מנותחות במקביל (4 במקביל), ותוצאות מתווספות לטבלה תוך כדי.
           </div>
           {imageNote ? (
             <div className="mt-2 text-xs text-slate-600 bg-slate-50 rounded p-2 whitespace-pre-wrap">

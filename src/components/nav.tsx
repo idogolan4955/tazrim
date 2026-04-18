@@ -17,6 +17,7 @@ const ADMIN_LINKS = [
   { href: "/recurring", label: "פעולות חוזרות" },
   { href: "/future", label: "פעולות עתידיות" },
   { href: "/loans", label: "הלוואות" },
+  { href: "/sales", label: "מכירות" },
   { href: "/purchasing", label: "רכש חזוי" },
   { href: "/status", label: "סטטוס ומאזן" },
 ];

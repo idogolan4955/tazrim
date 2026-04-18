@@ -122,17 +122,20 @@ model RecurringTransaction {
 }
 
 model Loan {
-  id           String    @id @default(cuid())
-  accountId    String
-  account      Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name         String
-  principal    Decimal   @db.Decimal(14, 2)
-  type         LoanType  @default(PRIME_LINKED)
-  spread       Decimal   @default(0) @db.Decimal(6, 3)
-  fixedRate    Decimal?  @db.Decimal(6, 3)
-  startDate    DateTime
-  termMonths   Int
-  createdAt    DateTime  @default(now())
+  id                     String    @id @default(cuid())
+  accountId              String
+  account                Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name                   String
+  principal              Decimal   @db.Decimal(14, 2)
+  currentBalance         Decimal?  @db.Decimal(14, 2)
+  monthlyPaymentOverride Decimal?  @db.Decimal(14, 2)
+  type                   LoanType  @default(PRIME_LINKED)
+  spread                 Decimal   @default(0) @db.Decimal(6, 3)
+  fixedRate              Decimal?  @db.Decimal(6, 3)
+  startDate              DateTime
+  termMonths             Int
+  notes                  String?
+  createdAt              DateTime  @default(now())
 
   @@index([accountId])
 }
@@ -159,6 +162,7 @@ model MonthlySales {
   id             String   @id @default(cuid())
   month          String   @unique // YYYY-MM
   salesAmount    Decimal  @db.Decimal(14, 2)
+  forecastAmount Decimal? @db.Decimal(14, 2)
   purchaseRatio  Decimal  @default(0.35) @db.Decimal(6, 4)
   notes          String?
   createdAt      DateTime @default(now())

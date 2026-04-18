@@ -147,18 +147,21 @@ async function gatherEvents(accountId: string, asOf: Date, end: Date): Promise<P
   const loans = await prisma.loan.findMany({ where: { accountId } });
   for (const loan of loans) {
     const rate = await resolveLoanRate(loan);
+    const override = toNumber(loan.monthlyPaymentOverride);
+    const basis = toNumber(loan.currentBalance) > 0 ? toNumber(loan.currentBalance) : toNumber(loan.principal);
     const schedule = spitzerSchedule({
-      principal: toNumber(loan.principal),
+      principal: basis,
       annualRatePct: rate,
       termMonths: loan.termMonths,
       startDate: stripTime(loan.startDate),
     });
     for (const row of schedule) {
       if (row.paymentDate >= asOf && row.paymentDate <= end) {
+        const payment = override > 0 ? override : row.payment;
         events.push({
           date: row.paymentDate,
           accountId,
-          amount: -row.payment,
+          amount: -payment,
           label: `החזר הלוואה: ${loan.name}`,
           source: "LOAN",
         });

@@ -1,48 +1,74 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
-import { z } from "zod";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { requireAdmin } from "@/lib/api-guard";
 
-const CheckRowSchema = z.object({
-  dueDate: z
-    .string()
-    .describe("תאריך פרעון בפורמט YYYY-MM-DD (ISO). המר תאריכי DD/MM/YYYY לפורמט הזה."),
-  amount: z
-    .number()
-    .describe("סכום השיק בשקלים (ש״ח). מספר טהור ללא מטבע ופסיקי אלפים."),
-  counterparty: z
-    .string()
-    .describe("שם הלקוח או הספק שעל השיק. מחרוזת ריקה אם לא נקרא."),
-  reference: z
-    .string()
-    .nullable()
-    .describe("מספר השיק / מספר אסמכתא אם מופיע. null אם לא נקרא."),
-  confidence: z
-    .enum(["high", "medium", "low"])
-    .describe("רמת ביטחון בזיהוי הפרטים: high=ברור, medium=חלקי, low=ספקולציה."),
-});
-
-const ExtractionSchema = z.object({
-  checks: z
-    .array(CheckRowSchema)
-    .describe("רשימת כל השיקים שזוהו בתמונה, בסדר שבו הם מופיעים."),
-  imageNotes: z
-    .string()
-    .nullable()
-    .describe("הערות כלליות על התמונה — איכות, מספר שיקים שזוהו, בעיות, חלקים לא ברורים."),
-});
+interface ExtractedCheck {
+  dueDate: string | null;
+  amount: number | null;
+  counterparty: string;
+  reference: string | null;
+  confidence?: "high" | "medium" | "low";
+}
+interface ExtractionResult {
+  checks: ExtractedCheck[];
+  imageNotes: string | null;
+}
 
 const MAX_BYTES = 8 * 1024 * 1024; // 8MB limit
 const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
+// Gemini's structured output schema (OpenAPI 3.0 subset).
+const responseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    checks: {
+      type: SchemaType.ARRAY,
+      description: "רשימת כל השיקים שזוהו בתמונה, בסדר שבו הם מופיעים",
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          dueDate: {
+            type: SchemaType.STRING,
+            description: "תאריך פרעון בפורמט YYYY-MM-DD. המר כל פורמט (DD/MM/YYYY, DD-MM-YY וכד') לפורמט הזה.",
+          },
+          amount: {
+            type: SchemaType.NUMBER,
+            description: "סכום השיק בשקלים. מספר טהור ללא מטבע ללא פסיקי אלפים.",
+          },
+          counterparty: {
+            type: SchemaType.STRING,
+            description: "שם הלקוח/ספק שעל השיק (הכותב). מחרוזת ריקה אם לא נקרא.",
+          },
+          reference: {
+            type: SchemaType.STRING,
+            nullable: true,
+            description: "מספר השיק / אסמכתא אם מופיע. null אם לא נקרא.",
+          },
+          confidence: {
+            type: SchemaType.STRING,
+            enum: ["high", "medium", "low"],
+            description: "רמת ביטחון בזיהוי: high=ברור, medium=חלקי, low=ספקולציה.",
+          },
+        },
+        required: ["dueDate", "amount", "counterparty", "confidence"],
+      },
+    },
+    imageNotes: {
+      type: SchemaType.STRING,
+      nullable: true,
+      description: "הערות על התמונה — איכות, מספר פריטים, חלקים חסרים או לא ברורים.",
+    },
+  },
+  required: ["checks"],
+};
 
 export async function POST(req: NextRequest) {
   const { error } = await requireAdmin();
   if (error) return error;
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY not configured on server" },
+      { error: "GEMINI_API_KEY not configured on server" },
       { status: 500 },
     );
   }
@@ -54,11 +80,7 @@ export async function POST(req: NextRequest) {
   }
 
   const rawType = (file as File).type;
-  const mediaType = (SUPPORTED_TYPES.has(rawType) ? rawType : "image/jpeg") as
-    | "image/jpeg"
-    | "image/png"
-    | "image/gif"
-    | "image/webp";
+  const mediaType = SUPPORTED_TYPES.has(rawType) ? rawType : "image/jpeg";
   const buf = Buffer.from(await file.arrayBuffer());
   if (buf.byteLength > MAX_BYTES) {
     return NextResponse.json(
@@ -68,77 +90,56 @@ export async function POST(req: NextRequest) {
   }
   const base64 = buf.toString("base64");
 
-  const client = new Anthropic();
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    generationConfig: {
+      responseMimeType: "application/json",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      responseSchema: responseSchema as any,
+      temperature: 0.1,
+    },
+    systemInstruction: `אתה עוזר פיננסי המתמחה בחילוץ פרטי שיקים מתמונות — צילום שיקים פיזיים, טבלה, צילום מסך, או רשימה כתובה ביד או מודפסת.
+הנחיות:
+- זהה כל שיק בתמונה.
+- תאריך פרעון חובה: המר כל פורמט (DD/MM/YYYY, DD-MM-YY, עברית) לפורמט YYYY-MM-DD. בפורמט מעורפל העדף DD/MM/YYYY (ישראלי).
+- סכום חובה: מספר טהור ללא מטבע ופסיקי אלפים.
+- שם לקוח/ספק: השם שעל השיק (הכותב). מחרוזת ריקה אם לא נקרא.
+- מספר שיק: null אם לא מוצג.
+- confidence: high/medium/low לפי רמת הבהירות.
+- אם בתמונה אין שיקים — החזר מערך ריק.
+- imageNotes: תעד בעיות כמו איכות נמוכה, שיקים חלקיים או מידע חסר.`,
+  });
 
   try {
-    const response = await client.messages.parse({
-      model: "claude-opus-4-7",
-      max_tokens: 16000,
-      system: [
-        {
-          type: "text",
-          text: "אתה עוזר פיננסי המתמחה בחילוץ פרטי שיקים מתמונות (צילום שיקים פיזיים, טבלה, צילום מסך, תמונה של רשימה כתובה ביד או מודפסת).",
-          cache_control: { type: "ephemeral" },
-        },
-        {
-          type: "text",
-          text: `הנחיות:
-1. זהה כל שיק בתמונה והחזר את הפרטים במבנה המובנה.
-2. תאריך פרעון חובה — המר כל פורמט תאריך (DD/MM/YYYY, DD-MM-YY, עברית) לפורמט YYYY-MM-DD.
-3. סכום חובה — מספר טהור ללא מטבע ללא פסיקי אלפים.
-4. שם לקוח/ספק — השם שעל השיק (הכותב, לא המוטב). אם לא נקרא — מחרוזת ריקה.
-5. מספר שיק/אסמכתא — null אם לא מוצג.
-6. סמן confidence לפי רמת הבהירות.
-7. אם אינך בטוח בחוד תאריך (יום מול חודש בפורמט מעורפל) — השתמש ברמת confidence "medium" והעדף את הפורמט הישראלי DD/MM/YYYY.
-8. אם בתמונה אין שיקים — החזר מערך ריק.
-9. imageNotes: תעד הערות חשובות — איכות, פריטים חלקיים, שיקים חסרים מידע קריטי.`,
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64 },
-            },
-            {
-              type: "text",
-              text: "חלץ את כל השיקים מהתמונה הזו לפי הסכמה המובנית.",
-            },
-          ],
-        },
-      ],
-      thinking: { type: "adaptive" },
-      output_config: {
-        format: zodOutputFormat(ExtractionSchema),
-        effort: "high",
-      },
-    });
-
-    const data = response.parsed_output as z.infer<typeof ExtractionSchema> | null;
-    if (!data) {
+    const result = await model.generateContent([
+      { inlineData: { mimeType: mediaType, data: base64 } },
+      { text: "חלץ את כל השיקים מהתמונה הזו לפי הסכמה המובנית." },
+    ]);
+    const text = result.response.text();
+    let data: ExtractionResult;
+    try {
+      data = JSON.parse(text) as ExtractionResult;
+    } catch {
       return NextResponse.json(
-        { error: "Claude failed to parse the image into structured output", stopReason: response.stop_reason },
+        { error: "Gemini returned invalid JSON", raw: text.slice(0, 500) },
         { status: 502 },
       );
     }
 
     return NextResponse.json({
-      checks: data.checks,
-      imageNotes: data.imageNotes,
-      usage: response.usage,
+      checks: data.checks ?? [],
+      imageNotes: data.imageNotes ?? null,
+      usage: result.response.usageMetadata ?? null,
     });
   } catch (err) {
-    if (err instanceof Anthropic.AuthenticationError) {
-      return NextResponse.json({ error: "Invalid ANTHROPIC_API_KEY" }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("API key") || message.includes("API_KEY")) {
+      return NextResponse.json({ error: "Invalid GEMINI_API_KEY" }, { status: 500 });
     }
-    if (err instanceof Anthropic.RateLimitError) {
-      return NextResponse.json({ error: "Claude rate limited, try again in a moment" }, { status: 429 });
+    if (message.includes("quota") || message.includes("rate")) {
+      return NextResponse.json({ error: `Gemini quota/rate limit: ${message}` }, { status: 429 });
     }
-    if (err instanceof Anthropic.APIError) {
-      return NextResponse.json({ error: `Claude API error: ${err.message}` }, { status: err.status ?? 500 });
-    }
-    throw err;
+    return NextResponse.json({ error: `Gemini error: ${message}` }, { status: 500 });
   }
 }

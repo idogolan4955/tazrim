@@ -1,0 +1,287 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import { formatCurrency, formatDate } from "@/lib/utils";
+
+interface Account { id: string; name: string; color: string; }
+
+type Kind = "RECEIVABLE_DEFERRED" | "RECEIVABLE_DISCOUNTED" | "PAYABLE";
+
+const KIND_LABEL: Record<Kind, string> = {
+  RECEIVABLE_DEFERRED: "שיק דחוי ללקבל",
+  RECEIVABLE_DISCOUNTED: "שיק נכיון",
+  PAYABLE: "שיק לפירעון",
+};
+
+interface ParsedRow {
+  dueDate: string | null; // ISO date YYYY-MM-DD
+  amount: number | null;
+  counterparty: string;
+  reference: string;
+  error: string | null;
+}
+
+export default function ImportChecksPage() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountId, setAccountId] = useState("");
+  const [kind, setKind] = useState<Kind>("RECEIVABLE_DEFERRED");
+  const [purpose, setPurpose] = useState("");
+  const [rawText, setRawText] = useState("");
+  const [rows, setRows] = useState<ParsedRow[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ created: number; errors: { index: number; reason: string }[] } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const a = await fetch("/api/accounts").then((r) => r.json());
+      setAccounts(a);
+      if (a[0]) setAccountId(a[0].id);
+    })();
+  }, []);
+
+  function parse() {
+    setResult(null);
+    const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const parsed: ParsedRow[] = [];
+    for (const line of lines) {
+      // Detect delimiter: tab, or 2+ spaces, or comma
+      let parts: string[];
+      if (line.includes("\t")) parts = line.split("\t");
+      else if (line.includes(",")) parts = line.split(",");
+      else parts = line.split(/\s{2,}/);
+      parts = parts.map((p) => p.trim());
+
+      // Find the date token and the amount token anywhere in the line
+      let dueDate: string | null = null;
+      let amount: number | null = null;
+      let remaining: string[] = [];
+      for (const part of parts) {
+        if (dueDate == null) {
+          const d = parseDate(part);
+          if (d) { dueDate = d; continue; }
+        }
+        if (amount == null) {
+          const n = parseAmount(part);
+          if (n != null && n > 0) { amount = n; continue; }
+        }
+        remaining.push(part);
+      }
+      // Assume first remaining = counterparty, second = reference (check number)
+      const counterparty = remaining[0] ?? "";
+      const reference = remaining[1] ?? "";
+
+      let error: string | null = null;
+      if (!dueDate) error = "לא זוהה תאריך פרעון";
+      else if (amount == null) error = "לא זוהה סכום";
+
+      parsed.push({ dueDate, amount, counterparty, reference, error });
+    }
+    setRows(parsed);
+  }
+
+  function updateRow(i: number, patch: Partial<ParsedRow>) {
+    setRows((prev) => prev.map((r, idx) => {
+      if (idx !== i) return r;
+      const merged = { ...r, ...patch };
+      // Recompute validity
+      let error: string | null = null;
+      if (!merged.dueDate) error = "תאריך פרעון חסר";
+      else if (merged.amount == null || merged.amount <= 0) error = "סכום חסר";
+      return { ...merged, error };
+    }));
+  }
+
+  function removeRow(i: number) {
+    setRows((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  async function submit() {
+    if (!accountId) { alert("בחר חשבון"); return; }
+    const valid = rows.filter((r) => !r.error);
+    if (valid.length === 0) { alert("אין שורות תקינות"); return; }
+    setSubmitting(true);
+    const payload = {
+      checks: valid.map((r) => ({
+        accountId,
+        kind,
+        amount: r.amount,
+        dueDate: r.dueDate,
+        counterparty: r.counterparty || "—",
+        reference: r.reference || null,
+        purpose: purpose || null,
+      })),
+    };
+    const res = await fetch("/api/checks/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    setResult(data);
+    setSubmitting(false);
+    if (data.created > 0 && (!data.errors || data.errors.length === 0)) {
+      setRows([]);
+      setRawText("");
+    }
+  }
+
+  const validCount = useMemo(() => rows.filter((r) => !r.error).length, [rows]);
+  const totalAmount = useMemo(() => rows.reduce((s, r) => s + (r.amount ?? 0), 0), [rows]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h1>יבוא שיקים מרובה</h1>
+      <p className="text-sm text-slate-500">
+        הדבק רשימת שיקים (שורה לכל שיק). חייב להופיע <strong>תאריך פרעון</strong> ו<strong>סכום</strong>. שאר השדות (שם לקוח, מספר שיק) רשות ומזוהים אוטומטית.
+        תומך בפורמטים DD/MM/YYYY · DD/MM/YY · YYYY-MM-DD. סכום יכול להיות עם ₪, פסיקים או רווחים.
+      </p>
+
+      <div className="card grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+        <div>
+          <label className="label">חשבון ליעד</label>
+          <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">סוג השיקים</label>
+          <select className="input" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
+            <option value="RECEIVABLE_DEFERRED">שיקים דחויים ללקבל</option>
+            <option value="RECEIVABLE_DISCOUNTED">שיקים נכיון</option>
+            <option value="PAYABLE">שיקים לפירעון</option>
+          </select>
+        </div>
+        <div className="md:col-span-2">
+          <label className="label">מטרה (אופציונלי, חל על כל השורות)</label>
+          <input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="הגדלת מלאי / תזרים..." />
+        </div>
+      </div>
+
+      <div className="card">
+        <label className="label">הדבק כאן את רשימת השיקים</label>
+        <textarea
+          className="input font-mono text-sm"
+          rows={10}
+          value={rawText}
+          onChange={(e) => setRawText(e.target.value)}
+          placeholder={"דוגמאות לפורמט (כל אחד תקף):\n15/05/2026  5000  יוסי לוי  12345\n20/05/2026, 3500, חנה כהן, 98765\n2026-06-01\t2,800\tדוד מזרחי\t55512"}
+        />
+        <div className="flex gap-2 mt-3">
+          <button className="btn-primary" onClick={parse} disabled={!rawText.trim()}>נתח</button>
+          <button className="btn" onClick={() => { setRows([]); setRawText(""); setResult(null); }}>נקה</button>
+        </div>
+      </div>
+
+      {rows.length > 0 ? (
+        <div className="card overflow-x-auto">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2>תצוגה מקדימה ({validCount} תקינים מתוך {rows.length})</h2>
+            <div className="flex items-center gap-2">
+              <div className="text-sm text-slate-500">סכום כולל: <strong>{formatCurrency(totalAmount)}</strong></div>
+              <button className="btn-primary" disabled={submitting || validCount === 0} onClick={submit}>
+                {submitting ? "מייבא..." : `ייבא ${validCount} שיקים`}
+              </button>
+            </div>
+          </div>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>תאריך פרעון</th>
+                <th>סכום</th>
+                <th>שם לקוח / ספק</th>
+                <th>מספר שיק</th>
+                <th>סטטוס</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className={r.error ? "bg-red-50" : ""}>
+                  <td className="text-slate-500">{i + 1}</td>
+                  <td>
+                    <input
+                      className="input max-w-[140px]"
+                      type="date"
+                      value={r.dueDate ?? ""}
+                      onChange={(e) => updateRow(i, { dueDate: e.target.value || null })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input max-w-[120px]"
+                      type="number"
+                      step="0.01"
+                      value={r.amount ?? ""}
+                      onChange={(e) => updateRow(i, { amount: e.target.value ? parseFloat(e.target.value) : null })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      value={r.counterparty}
+                      onChange={(e) => updateRow(i, { counterparty: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input max-w-[120px]"
+                      value={r.reference}
+                      onChange={(e) => updateRow(i, { reference: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    {r.error ? <span className="chip-red">{r.error}</span> : <span className="chip-green">תקין</span>}
+                  </td>
+                  <td>
+                    <button className="btn-danger" onClick={() => removeRow(i)}>הסר</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {result ? (
+        <div className={`card ${result.created > 0 ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+          <div className="font-semibold mb-1">
+            {result.created > 0 ? `✓ נוצרו ${result.created} שיקים בהצלחה` : "שגיאה ביצירה"}
+          </div>
+          {result.errors && result.errors.length > 0 ? (
+            <ul className="text-sm list-disc mr-5">
+              {result.errors.map((e, i) => <li key={i}>שורה {e.index + 1}: {e.reason}</li>)}
+            </ul>
+          ) : null}
+          {result.created > 0 ? (
+            <a href="/future" className="btn-primary mt-2 inline-flex">עבור לדף השיקים</a>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function parseDate(s: string): string | null {
+  s = s.trim();
+  // DD/MM/YYYY or DD/MM/YY or DD-MM-YYYY or DD.MM.YYYY
+  const m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if (m) {
+    const d = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10);
+    let y = parseInt(m[3], 10);
+    if (m[3].length === 2) y = 2000 + y;
+    if (d < 1 || d > 31 || mo < 1 || mo > 12 || y < 2000 || y > 2100) return null;
+    return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  // ISO
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return s;
+  return null;
+}
+
+function parseAmount(s: string): number | null {
+  const cleaned = s.replace(/[₪$€\s,]/g, "");
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
+}

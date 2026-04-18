@@ -50,3 +50,16 @@
   .chip-amber { @apply chip bg-amber-50 text-amber-700; }
   .chip-slate { @apply chip bg-slate-100 text-slate-700; }
 }
+
+@media print {
+  @page { size: A4; margin: 14mm; }
+  nav, .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  body, html { background: white !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  .card { border: 1px solid #e2e8f0 !important; box-shadow: none !important; break-inside: avoid; }
+  section, .avoid-break { break-inside: avoid; }
+  table { font-size: 10pt !important; }
+  .table thead th { background: #f8fafc !important; }
+  h1, h2, h3 { break-after: avoid; }
+}

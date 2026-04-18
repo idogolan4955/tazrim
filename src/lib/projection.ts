@@ -28,6 +28,17 @@ export interface AccountProjection {
   series: DailyPoint[];
 }
 
+export interface LedgerRow {
+  date: string; // YYYY-MM-DD
+  accountId: string;
+  accountName: string;
+  accountColor: string;
+  label: string;
+  source: ProjectionEvent["source"];
+  amount: number; // signed (+income, -expense)
+  runningBalance: number;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function buildProjection(opts: { accountIds?: string[]; horizonMonths?: number; asOf?: Date } = {}): Promise<{
@@ -112,6 +123,102 @@ export async function buildProjection(opts: { accountIds?: string[]; horizonMont
       plus12m: round2(results.reduce((s, r) => s + r.plus12m, 0)),
     },
   };
+}
+
+export async function buildLedger(opts: {
+  accountIds?: string[];
+  horizonMonths?: number;
+  asOf?: Date;
+  includePast?: boolean;
+  pastDays?: number;
+} = {}): Promise<{ rows: LedgerRow[]; startingBalance: number }> {
+  const horizon = opts.horizonMonths ?? 12;
+  const asOf = stripTime(opts.asOf ?? new Date());
+  const end = new Date(asOf);
+  end.setMonth(end.getMonth() + horizon);
+  const pastDays = opts.pastDays ?? 60;
+  const pastStart = new Date(asOf);
+  pastStart.setDate(pastStart.getDate() - pastDays);
+
+  const accounts = await prisma.account.findMany({
+    where: opts.accountIds && opts.accountIds.length > 0 ? { id: { in: opts.accountIds } } : undefined,
+    orderBy: { createdAt: "asc" },
+  });
+  const accountsById = new Map(accounts.map((a) => [a.id, a]));
+
+  const purchaseEventsByAccount = await buildPurchaseEvents(asOf, end);
+
+  const events: ProjectionEvent[] = [];
+  let startingBalanceAtPastStart = 0; // combined balance at pastStart (or asOf if !includePast)
+
+  for (const acc of accounts) {
+    const openingBalance = toNumber(acc.openingBalance);
+    const openingDate = stripTime(acc.openingBalanceDate);
+
+    // Actual past txns (between openingDate and asOf)
+    const actuals = await prisma.transaction.findMany({
+      where: { accountId: acc.id, status: "ACTUAL", date: { gte: openingDate, lte: asOf } },
+      orderBy: { date: "asc" },
+    });
+
+    // Balance at pastStart = openingBalance + actuals from openingDate..pastStart-1
+    let balAtPastStart = openingBalance;
+    for (const t of actuals) {
+      if (stripTime(t.date) < (opts.includePast ? pastStart : asOf)) {
+        balAtPastStart += signed(toNumber(t.amount), t.kind);
+      }
+    }
+    startingBalanceAtPastStart += balAtPastStart;
+
+    // Actual events from pastStart onwards (if includePast)
+    if (opts.includePast) {
+      for (const t of actuals) {
+        const d = stripTime(t.date);
+        if (d >= pastStart && d <= asOf) {
+          events.push({
+            date: d,
+            accountId: acc.id,
+            amount: signed(toNumber(t.amount), t.kind),
+            label: t.description,
+            source: "ACTUAL",
+          });
+        }
+      }
+    }
+
+    // Future projected events
+    const future = await gatherEvents(acc.id, asOf, end);
+    const purchase = purchaseEventsByAccount.get(acc.id) ?? [];
+    for (const e of [...future, ...purchase]) {
+      if (e.date > asOf && e.date <= end) events.push(e);
+    }
+  }
+
+  events.sort((a, b) => a.date.getTime() - b.date.getTime() || sortSource(a.source, b.source));
+
+  const rows: LedgerRow[] = [];
+  let running = startingBalanceAtPastStart;
+  for (const e of events) {
+    running += e.amount;
+    const acc = accountsById.get(e.accountId);
+    rows.push({
+      date: dateKey(e.date),
+      accountId: e.accountId,
+      accountName: acc?.name ?? "—",
+      accountColor: acc?.color ?? "#64748b",
+      label: e.label,
+      source: e.source,
+      amount: round2(e.amount),
+      runningBalance: round2(running),
+    });
+  }
+
+  return { rows, startingBalance: round2(startingBalanceAtPastStart) };
+}
+
+function sortSource(a: string, b: string) {
+  const order = ["ACTUAL", "RECURRING", "LOAN", "CHECK", "PURCHASE", "MANUAL_PROJECTED"];
+  return order.indexOf(a) - order.indexOf(b);
 }
 
 async function gatherEvents(accountId: string, asOf: Date, end: Date): Promise<ProjectionEvent[]> {

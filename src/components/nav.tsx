@@ -20,9 +20,13 @@ const ADMIN_LINKS = [
   { href: "/sales", label: "מכירות" },
   { href: "/purchasing", label: "רכש חזוי" },
   { href: "/status", label: "סטטוס ומאזן" },
+  { href: "/report", label: "דוח תשקיף" },
 ];
 
-const PARTNER_LINKS = [{ href: "/", label: "סקירה" }];
+const PARTNER_LINKS = [
+  { href: "/", label: "סקירה" },
+  { href: "/report", label: "דוח תשקיף" },
+];
 
 export function Nav({ user }: { user: NavUser }) {
   const pathname = usePathname();

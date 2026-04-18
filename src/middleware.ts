@@ -1,7 +1,17 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 
-const PARTNER_ALLOWED = ["/", "/api/projection", "/api/auth"];
+const PARTNER_ALLOWED = [
+  "/",
+  "/report",
+  "/api/projection",
+  "/api/summary",
+  "/api/accounts",
+  "/api/ledger",
+  "/api/balance-forecast",
+  "/api/loans",
+  "/api/auth",
+];
 
 export default withAuth(
   function middleware(req) {

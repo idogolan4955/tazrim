@@ -8,3 +8,5 @@ dist
 .vercel
 coverage
 prisma/migrations/dev.db*
+tsconfig.tsbuildinfo
+next-env.d.ts

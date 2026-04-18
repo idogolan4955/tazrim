@@ -10,6 +10,7 @@ const PARTNER_ALLOWED = [
   "/api/ledger",
   "/api/balance-forecast",
   "/api/loans",
+  "/api/credit-summary",
   "/api/auth",
 ];
 

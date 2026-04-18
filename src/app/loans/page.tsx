@@ -15,6 +15,7 @@ interface Loan {
   fixedRate: string | null;
   startDate: string;
   termMonths: number;
+  purpose: string | null;
   notes: string | null;
   effectiveRate: number;
   monthlyPayment: number;
@@ -180,6 +181,7 @@ function LoanForm({ loan, accounts, prime, onDone, onCancel }: {
   const [fixedRate, setFixedRate] = useState(loan?.fixedRate ?? "");
   const [startDate, setStartDate] = useState(loan ? loan.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10));
   const [termMonths, setTermMonths] = useState(loan?.termMonths ? String(loan.termMonths) : "60");
+  const [purpose, setPurpose] = useState(loan?.purpose ?? "");
   const [notes, setNotes] = useState(loan?.notes ?? "");
   const [submitting, setSubmitting] = useState(false);
 
@@ -203,6 +205,7 @@ function LoanForm({ loan, accounts, prime, onDone, onCancel }: {
       fixedRate: type === "FIXED" ? parseFloat(fixedRate || "0") : null,
       startDate,
       termMonths: parseInt(termMonths, 10),
+      purpose: purpose || null,
       notes: notes || null,
     };
     const url = isEdit ? `/api/loans/${loan!.id}` : "/api/loans";
@@ -282,6 +285,15 @@ function LoanForm({ loan, accounts, prime, onDone, onCancel }: {
         />
       </div>
       <div className="md:col-span-2">
+        <label className="label">מטרת האשראי</label>
+        <input
+          className="input"
+          value={purpose}
+          onChange={(e) => setPurpose(e.target.value)}
+          placeholder="הגדלת מלאי / הקמת חנות / תזרים שוטף..."
+        />
+      </div>
+      <div className="md:col-span-4">
         <label className="label">הערות</label>
         <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>

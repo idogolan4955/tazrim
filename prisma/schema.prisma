@@ -133,6 +133,7 @@ model Loan {
   fixedRate              Decimal?  @db.Decimal(6, 3)
   startDate              DateTime
   termMonths             Int
+  purpose                String?
   notes                  String?
   createdAt              DateTime  @default(now())
 
@@ -150,6 +151,7 @@ model Check {
   counterparty String
   reference    String?
   status      CheckStatus @default(PENDING)
+  purpose     String?
   notes       String?
   createdAt   DateTime    @default(now())
 

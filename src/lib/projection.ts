@@ -1,7 +1,7 @@
 import { prisma } from "./prisma";
 import { spitzerSchedule } from "./spitzer";
 import { toNumber } from "./utils";
-import type { CheckKind, Frequency, TxnKind } from "@prisma/client";
+import type { Frequency, TxnKind } from "@prisma/client";
 
 export interface ProjectionEvent {
   date: Date;
@@ -281,22 +281,55 @@ async function gatherEvents(accountId: string, asOf: Date, end: Date): Promise<P
     }
   }
 
-  // 4) Checks — affect balance on their due date (or discountedOn for discounted receivables)
+  // 4) Checks — affect balance like a real bank OSH statement
   const checks = await prisma.check.findMany({
     where: { accountId, status: "PENDING" },
   });
   for (const c of checks) {
     const amt = toNumber(c.amount);
-    const effectiveDate = stripTime(c.kind === "RECEIVABLE_DISCOUNTED" && c.discountedOn ? c.discountedOn : c.dueDate);
-    if (effectiveDate < asOf || effectiveDate > end) continue;
-    const signedAmt = c.kind === "PAYABLE" ? -amt : amt;
-    events.push({
-      date: effectiveDate,
-      accountId,
-      amount: signedAmt,
-      label: checkLabel(c.kind, c.counterparty),
-      source: "CHECK",
-    });
+    const due = stripTime(c.dueDate);
+
+    if (c.kind === "PAYABLE") {
+      if (due >= asOf && due <= end) {
+        events.push({ date: due, accountId, amount: -amt, label: `שיק לפירעון: ${c.counterparty}`, source: "CHECK" });
+      }
+    } else if (c.kind === "RECEIVABLE_DEFERRED") {
+      if (due >= asOf && due <= end) {
+        events.push({ date: due, accountId, amount: amt, label: `שיק דחוי מ־${c.counterparty}`, source: "CHECK" });
+      }
+    } else if (c.kind === "RECEIVABLE_DISCOUNTED") {
+      // Three events like a real bank OSH:
+      // (1) discount date  → +amount (bank credits us now, we receive cash from the discount)
+      // (2) due date       → +amount (the check clears in from customer)
+      // (3) due date       → -amount (bank claws back the discount advance)
+      // Net on due date = 0, but all three rows appear in the ledger.
+      const discountDate = c.discountedOn ? stripTime(c.discountedOn) : due;
+      if (discountDate >= asOf && discountDate <= end) {
+        events.push({
+          date: discountDate,
+          accountId,
+          amount: amt,
+          label: `נכיון שיק מ־${c.counterparty}`,
+          source: "CHECK",
+        });
+      }
+      if (due >= asOf && due <= end) {
+        events.push({
+          date: due,
+          accountId,
+          amount: amt,
+          label: `פרעון שיק דחוי מ־${c.counterparty}`,
+          source: "CHECK",
+        });
+        events.push({
+          date: due,
+          accountId,
+          amount: -amt,
+          label: `החזר אשראי נכיון (${c.counterparty})`,
+          source: "CHECK",
+        });
+      }
+    }
   }
 
   return events;
@@ -404,12 +437,6 @@ function daysInMonth(d: Date) {
 
 function signed(amount: number, kind: TxnKind) {
   return kind === "INCOME" ? Math.abs(amount) : -Math.abs(amount);
-}
-
-function checkLabel(kind: CheckKind, party: string) {
-  if (kind === "RECEIVABLE_DEFERRED") return `שיק דחוי מ־${party}`;
-  if (kind === "RECEIVABLE_DISCOUNTED") return `שיק נכיון מ־${party}`;
-  return `שיק לפירעון: ${party}`;
 }
 
 function stripTime(d: Date) {

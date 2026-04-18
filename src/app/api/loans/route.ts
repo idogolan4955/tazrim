@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
       fixedRate: body.fixedRate ?? null,
       startDate: new Date(body.startDate),
       termMonths: body.termMonths,
+      purpose: body.purpose ?? null,
       notes: body.notes ?? null,
     },
   });

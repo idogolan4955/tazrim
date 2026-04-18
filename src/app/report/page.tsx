@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { Kpi } from "@/components/kpi";
+import { CreditSummarySection } from "@/components/credit-summary";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface AccountLite { id: string; name: string; color: string; }
@@ -243,6 +244,10 @@ export default function ReportPage() {
           </table>
         </div>
       </section>
+
+      <div className="avoid-break">
+        <CreditSummarySection />
+      </div>
 
       {loans.length > 0 ? (
         <section className="avoid-break">

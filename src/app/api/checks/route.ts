@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
       counterparty: body.counterparty,
       reference: body.reference ?? null,
       status: body.status ?? "PENDING",
+      purpose: body.purpose ?? null,
       notes: body.notes ?? null,
     },
   });

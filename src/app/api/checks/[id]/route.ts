@@ -8,7 +8,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json();
   const data: Record<string, unknown> = {};
-  for (const k of ["kind", "amount", "counterparty", "reference", "status", "notes"]) {
+  for (const k of ["kind", "amount", "counterparty", "reference", "status", "purpose", "notes"]) {
     if (body[k] !== undefined) data[k] = body[k];
   }
   if (body.dueDate !== undefined) data.dueDate = new Date(body.dueDate);

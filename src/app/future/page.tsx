@@ -13,6 +13,7 @@ interface Check {
   counterparty: string;
   reference: string | null;
   status: "PENDING" | "CLEARED" | "BOUNCED" | "CANCELLED";
+  purpose: string | null;
   notes: string | null;
   account?: Account;
 }
@@ -90,6 +91,19 @@ function ChecksTab({ checks, accounts, loading, onChanged }: { checks: Check[]; 
     onChanged();
   }
 
+  async function convertToDiscount(c: Check) {
+    const today = new Date().toISOString().slice(0, 10);
+    const date = prompt("תאריך הנכיון:", today);
+    if (!date) return;
+    const purpose = prompt("מטרת הנכיון (אופציונלי):", c.purpose ?? "") ?? null;
+    await fetch(`/api/checks/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "RECEIVABLE_DISCOUNTED", discountedOn: date, purpose }),
+    });
+    onChanged();
+  }
+
   async function remove(c: Check) {
     if (!confirm("למחוק את השיק?")) return;
     await fetch(`/api/checks/${c.id}`, { method: "DELETE" });
@@ -114,7 +128,7 @@ function ChecksTab({ checks, accounts, loading, onChanged }: { checks: Check[]; 
                 <th>תאריך פרעון</th>
                 <th>תאריך נכיון</th>
                 <th>סטטוס</th>
-                <th>אסמכתא</th>
+                <th>מטרה / אסמכתא</th>
                 <th></th>
               </tr>
             </thead>
@@ -132,8 +146,17 @@ function ChecksTab({ checks, accounts, loading, onChanged }: { checks: Check[]; 
                       {Object.entries(STATUS_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </select>
                   </td>
-                  <td>{c.reference ?? "—"}</td>
-                  <td><button className="btn-danger" onClick={() => remove(c)}>מחק</button></td>
+                  <td>
+                    {c.purpose ? <div className="text-xs text-brand-700 font-medium">{c.purpose}</div> : null}
+                    {c.reference ? <div className="text-xs text-slate-500">{c.reference}</div> : null}
+                    {!c.purpose && !c.reference ? "—" : null}
+                  </td>
+                  <td className="flex gap-1 flex-wrap">
+                    {c.kind === "RECEIVABLE_DEFERRED" ? (
+                      <button className="btn py-1 px-2 text-xs" onClick={() => convertToDiscount(c)}>העבר לנכיון</button>
+                    ) : null}
+                    <button className="btn-danger" onClick={() => remove(c)}>מחק</button>
+                  </td>
                 </tr>
               ))}
               {checks.length === 0 && !loading ? (
@@ -155,6 +178,7 @@ function NewCheckForm({ accounts, onCreated }: { accounts: Account[]; onCreated:
   const [discountedOn, setDiscountedOn] = useState("");
   const [counterparty, setCounterparty] = useState("");
   const [reference, setReference] = useState("");
+  const [purpose, setPurpose] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -175,6 +199,7 @@ function NewCheckForm({ accounts, onCreated }: { accounts: Account[]; onCreated:
         discountedOn: kind === "RECEIVABLE_DISCOUNTED" && discountedOn ? discountedOn : null,
         counterparty,
         reference: reference || null,
+        purpose: purpose || null,
       }),
     });
     setSubmitting(false);
@@ -219,6 +244,12 @@ function NewCheckForm({ accounts, onCreated }: { accounts: Account[]; onCreated:
         <label className="label">אסמכתא</label>
         <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
       </div>
+      {kind === "RECEIVABLE_DISCOUNTED" ? (
+        <div className="md:col-span-4">
+          <label className="label">מטרת האשראי (נכיון)</label>
+          <input className="input" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="הגדלת מלאי / תזרים שוטף / רכש ספציפי..." />
+        </div>
+      ) : null}
       <div className="md:col-span-4 flex justify-end">
         <button className="btn-primary" type="submit" disabled={submitting}>{submitting ? "שומר..." : "הוסף שיק"}</button>
       </div>

@@ -68,7 +68,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json();
   const data: Record<string, unknown> = {};
-  for (const k of ["name", "principal", "currentBalance", "monthlyPaymentOverride", "type", "spread", "fixedRate", "termMonths", "accountId", "notes"]) {
+  for (const k of ["name", "principal", "currentBalance", "monthlyPaymentOverride", "type", "spread", "fixedRate", "termMonths", "accountId", "purpose", "notes"]) {
     if (body[k] !== undefined) data[k] = body[k];
   }
   if (body.startDate !== undefined) data.startDate = new Date(body.startDate);

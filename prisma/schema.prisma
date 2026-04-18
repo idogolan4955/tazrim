@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PARTNER
+}
+
+enum TxnKind {
+  INCOME
+  EXPENSE
+}
+
+enum TxnStatus {
+  ACTUAL
+  PROJECTED
+}
+
+enum TxnSource {
+  MANUAL
+  RECURRING
+  LOAN
+  CHECK
+  PURCHASE
+}
+
+enum Frequency {
+  MONTHLY
+  WEEKLY
+  BIWEEKLY
+  YEARLY
+  ONE_TIME
+}
+
+enum CheckKind {
+  RECEIVABLE_DEFERRED
+  RECEIVABLE_DISCOUNTED
+  PAYABLE
+}
+
+enum CheckStatus {
+  PENDING
+  CLEARED
+  BOUNCED
+  CANCELLED
+}
+
+enum LoanType {
+  FIXED
+  PRIME_LINKED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+}
+
+model Account {
+  id                 String    @id @default(cuid())
+  name               String
+  bankName           String?
+  accountNumber      String?
+  color              String    @default("#336bff")
+  openingBalance     Decimal   @default(0) @db.Decimal(14, 2)
+  openingBalanceDate DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  inventory          Decimal   @default(0) @db.Decimal(14, 2)
+  notes              String?
+
+  transactions Transaction[]
+  recurring    RecurringTransaction[]
+  loans        Loan[]
+  checks       Check[]
+}
+
+model Transaction {
+  id          String     @id @default(cuid())
+  accountId   String
+  account     Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date        DateTime
+  amount      Decimal    @db.Decimal(14, 2)
+  kind        TxnKind
+  description String
+  category    String?
+  status      TxnStatus  @default(ACTUAL)
+  source      TxnSource  @default(MANUAL)
+  sourceRefId String?
+  createdAt   DateTime   @default(now())
+
+  @@index([accountId, date])
+  @@index([status])
+}
+
+model RecurringTransaction {
+  id          String     @id @default(cuid())
+  accountId   String
+  account     Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name        String
+  amount      Decimal    @db.Decimal(14, 2)
+  kind        TxnKind
+  frequency   Frequency  @default(MONTHLY)
+  dayOfMonth  Int?
+  startDate   DateTime
+  endDate     DateTime?
+  category    String?
+  source      TxnSource  @default(MANUAL)
+  sourceRefId String?
+  active      Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+
+  @@index([accountId])
+}
+
+model Loan {
+  id           String    @id @default(cuid())
+  accountId    String
+  account      Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name         String
+  principal    Decimal   @db.Decimal(14, 2)
+  type         LoanType  @default(PRIME_LINKED)
+  spread       Decimal   @default(0) @db.Decimal(6, 3)
+  fixedRate    Decimal?  @db.Decimal(6, 3)
+  startDate    DateTime
+  termMonths   Int
+  createdAt    DateTime  @default(now())
+
+  @@index([accountId])
+}
+
+model Check {
+  id          String      @id @default(cuid())
+  accountId   String
+  account     Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind        CheckKind
+  amount      Decimal     @db.Decimal(14, 2)
+  dueDate     DateTime
+  discountedOn DateTime?
+  counterparty String
+  reference    String?
+  status      CheckStatus @default(PENDING)
+  notes       String?
+  createdAt   DateTime    @default(now())
+
+  @@index([accountId, dueDate])
+  @@index([status])
+}
+
+model MonthlySales {
+  id             String   @id @default(cuid())
+  month          String   @unique // YYYY-MM
+  salesAmount    Decimal  @db.Decimal(14, 2)
+  purchaseRatio  Decimal  @default(0.35) @db.Decimal(6, 4)
+  notes          String?
+  createdAt      DateTime @default(now())
+}
+
+model Receivable {
+  id           String   @id @default(cuid())
+  customerName String
+  amount       Decimal  @db.Decimal(14, 2)
+  dueDate      DateTime?
+  notes        String?
+  createdAt    DateTime @default(now())
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

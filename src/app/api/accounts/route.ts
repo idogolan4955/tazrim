@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireAuth } from "@/lib/api-guard";
+import { logAction } from "@/lib/audit";
 
 export async function GET() {
   const { error } = await requireAuth();
@@ -23,6 +24,14 @@ export async function POST(req: NextRequest) {
       openingBalanceDate: body.openingBalanceDate ? new Date(body.openingBalanceDate) : new Date(),
       notes: body.notes ?? null,
     },
+  });
+  await logAction({
+    action: "CREATE",
+    entity: "ACCOUNT",
+    entityId: account.id,
+    summary: `נוצר חשבון חדש "${account.name}"${account.bankName ? ` (${account.bankName})` : ""}`,
+    amount: Number(account.openingBalance),
+    amountKind: "NEUTRAL",
   });
   return NextResponse.json(account);
 }

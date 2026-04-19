@@ -21,6 +21,7 @@ const ADMIN_LINKS = [
   { href: "/purchasing", label: "רכש חזוי" },
   { href: "/status", label: "סטטוס ומאזן" },
   { href: "/report", label: "דוח תשקיף" },
+  { href: "/log", label: "יומן" },
 ];
 
 const PARTNER_LINKS = [

@@ -184,3 +184,19 @@ model Setting {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  timestamp  DateTime @default(now())
+  userId     String?
+  userName   String?
+  action     String   // CREATE | UPDATE | DELETE | CONVERT | STATUS_CHANGE | IMPORT
+  entity     String   // ACCOUNT | TRANSACTION | CHECK | LOAN | RECURRING | SALE | RECEIVABLE | SETTING
+  entityId   String?
+  summary    String
+  amount     Decimal? @db.Decimal(14, 2)
+  amountKind String?  // INCOME | EXPENSE | NEUTRAL
+
+  @@index([timestamp])
+  @@index([entity, timestamp])
+}

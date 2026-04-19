@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { Kpi } from "./kpi";
 import { LedgerTable } from "./ledger-table";
+import { LogFeed } from "./log-feed";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface AccountLite { id: string; name: string; color: string; }
@@ -124,6 +125,8 @@ export function DashboardClient({ partnerMode = false }: { partnerMode?: boolean
           <Kpi label="בעוד 12 חודשים" value={combined?.plus12m ?? 0} tone={combined && combined.plus12m >= 0 ? "good" : "bad"} />
         </div>
       </section>
+
+      <LogFeed compact={true} initialLimit={30} />
 
       <section className="card">
         <h2 className="mb-3">תחזית תזרים (12 חודשים)</h2>

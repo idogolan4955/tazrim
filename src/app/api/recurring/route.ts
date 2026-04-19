@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireAuth } from "@/lib/api-guard";
+import { logAction } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAuth();
@@ -34,6 +35,14 @@ export async function POST(req: NextRequest) {
       sourceRefId: body.sourceRefId ?? null,
       active: body.active ?? true,
     },
+  });
+  await logAction({
+    action: "CREATE",
+    entity: "RECURRING",
+    entityId: r.id,
+    summary: `נוצרה פעולה חוזרת: ${r.name}`,
+    amount: Number(r.amount),
+    amountKind: r.kind === "INCOME" ? "INCOME" : "EXPENSE",
   });
   return NextResponse.json(r);
 }

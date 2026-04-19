@@ -11,6 +11,7 @@ const PARTNER_ALLOWED = [
   "/api/balance-forecast",
   "/api/loans",
   "/api/credit-summary",
+  "/api/audit",
   "/api/auth",
 ];
 

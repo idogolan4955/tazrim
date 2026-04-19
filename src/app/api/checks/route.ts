@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireAuth } from "@/lib/api-guard";
+import { logAction } from "@/lib/audit";
+
+const KIND_LABEL: Record<string, string> = {
+  RECEIVABLE_DEFERRED: "שיק דחוי מ־",
+  RECEIVABLE_DISCOUNTED: "שיק נכיון מ־",
+  PAYABLE: "שיק לפרעון ל־",
+};
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAuth();
@@ -36,6 +43,15 @@ export async function POST(req: NextRequest) {
       purpose: body.purpose ?? null,
       notes: body.notes ?? null,
     },
+  });
+  const kindLabel = KIND_LABEL[c.kind] ?? "שיק ";
+  await logAction({
+    action: "CREATE",
+    entity: "CHECK",
+    entityId: c.id,
+    summary: `${kindLabel}${c.counterparty}${c.reference ? ` #${c.reference}` : ""}`,
+    amount: Number(c.amount),
+    amountKind: c.kind === "PAYABLE" ? "EXPENSE" : "INCOME",
   });
   return NextResponse.json(c);
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/api-guard";
+import { logAction } from "@/lib/audit";
 import type { CheckKind, CheckStatus } from "@prisma/client";
 
 interface BulkCheckInput {
@@ -54,5 +55,17 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await prisma.$transaction(data.map((d) => prisma.check.create({ data: d })));
+  if (result.length > 0) {
+    const totalAmount = result.reduce((s, r) => s + Number(r.amount), 0);
+    const firstKind = result[0].kind;
+    const kindLabel = firstKind === "PAYABLE" ? "לפרעון" : firstKind === "RECEIVABLE_DISCOUNTED" ? "נכיון" : "דחויים";
+    await logAction({
+      action: "IMPORT",
+      entity: "CHECK",
+      summary: `יובאו ${result.length} שיקים (${kindLabel}) בייבוא מרובה`,
+      amount: totalAmount,
+      amountKind: firstKind === "PAYABLE" ? "EXPENSE" : "INCOME",
+    });
+  }
   return NextResponse.json({ created: result.length, errors });
 }

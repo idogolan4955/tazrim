@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/api-guard";
 import { spitzerSchedule, monthlyPayment } from "@/lib/spitzer";
 import { toNumber } from "@/lib/utils";
+import { logAction } from "@/lib/audit";
 
 async function resolveLoanRate(loan: { type: "FIXED" | "PRIME_LINKED"; spread: unknown; fixedRate: unknown | null }): Promise<number> {
   if (loan.type === "FIXED") return toNumber(loan.fixedRate);
@@ -117,6 +118,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   }
 
+  await logAction({
+    action: "UPDATE",
+    entity: "LOAN",
+    entityId: loan.id,
+    summary: `עודכנה הלוואה: ${loan.name}`,
+    amount: toNumber(loan.principal),
+    amountKind: "EXPENSE",
+  });
+
   return NextResponse.json(loan);
 }
 
@@ -124,7 +134,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { error } = await requireAdmin();
   if (error) return error;
   const { id } = await params;
+  const existing = await prisma.loan.findUnique({ where: { id } });
   await prisma.recurringTransaction.deleteMany({ where: { source: "LOAN", sourceRefId: id } });
   await prisma.loan.delete({ where: { id } });
+  if (existing) {
+    await logAction({
+      action: "DELETE",
+      entity: "LOAN",
+      entityId: id,
+      summary: `נמחקה הלוואה: ${existing.name}`,
+      amount: toNumber(existing.principal),
+      amountKind: "EXPENSE",
+    });
+  }
   return NextResponse.json({ ok: true });
 }

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireAuth } from "@/lib/api-guard";
 import { spitzerSchedule, monthlyPayment } from "@/lib/spitzer";
 import { toNumber } from "@/lib/utils";
+import { logAction } from "@/lib/audit";
 
 async function getPrime() {
   const boiRow = await prisma.setting.findUnique({ where: { key: "boi_base_rate" } });
@@ -104,6 +105,15 @@ export async function POST(req: NextRequest) {
       sourceRefId: loan.id,
       active: true,
     },
+  });
+
+  await logAction({
+    action: "CREATE",
+    entity: "LOAN",
+    entityId: loan.id,
+    summary: `נוצרה הלוואה: ${loan.name}${body.purpose ? ` · מטרה: ${body.purpose}` : ""}`,
+    amount: toNumber(loan.principal),
+    amountKind: "EXPENSE",
   });
 
   return NextResponse.json(loan);

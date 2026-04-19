@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, requireAuth } from "@/lib/api-guard";
 import { getSettings, setSetting } from "@/lib/settings";
+import { logAction } from "@/lib/audit";
+
+const SETTING_LABEL: Record<string, string> = {
+  opening_inventory: "יתרת מלאי פתיחה",
+  opening_inventory_date: "תאריך מלאי פתיחה",
+  cogs_ratio: "אחוז עלות מכר (COGS)",
+  default_purchase_account_id: "חשבון רכש ברירת מחדל",
+  default_purchase_ratio: "מקדם רכש ברירת מחדל",
+};
 
 const KEYS = [
   "opening_inventory",
@@ -28,6 +37,15 @@ export async function PATCH(req: NextRequest) {
       await setSetting(k, v);
       updated[k] = v;
     }
+  }
+  const changedKeys = Object.keys(updated);
+  if (changedKeys.length > 0) {
+    const labels = changedKeys.map((k) => SETTING_LABEL[k] ?? k).join(", ");
+    await logAction({
+      action: "UPDATE",
+      entity: "SETTING",
+      summary: `עודכנו הגדרות: ${labels}`,
+    });
   }
   return NextResponse.json(updated);
 }

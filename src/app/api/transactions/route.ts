@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireAuth } from "@/lib/api-guard";
+import { logAction } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAuth();
@@ -43,6 +44,16 @@ export async function POST(req: NextRequest) {
       status: body.status ?? "ACTUAL",
       source: body.source ?? "MANUAL",
     },
+  });
+  const acc = await prisma.account.findUnique({ where: { id: txn.accountId } });
+  const isProjected = txn.status === "PROJECTED";
+  await logAction({
+    action: "CREATE",
+    entity: "TRANSACTION",
+    entityId: txn.id,
+    summary: `${isProjected ? "תחזית סליקה" : "תנועה"} ${txn.kind === "INCOME" ? "הכנסה" : "הוצאה"}: ${txn.description}${acc ? ` · ${acc.name}` : ""}`,
+    amount: Number(txn.amount),
+    amountKind: txn.kind === "INCOME" ? "INCOME" : "EXPENSE",
   });
   return NextResponse.json(txn);
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { requireAdmin } from "@/lib/api-guard";
+import { logAction } from "@/lib/audit";
 
 interface ExtractedCheck {
   dueDate: string | null;
@@ -127,8 +128,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const checks = data.checks ?? [];
+    if (checks.length > 0) {
+      await logAction({
+        action: "IMPORT",
+        entity: "CHECK",
+        summary: `Gemini חילץ ${checks.length} שיקים מתמונה`,
+      });
+    }
     return NextResponse.json({
-      checks: data.checks ?? [],
+      checks,
       imageNotes: data.imageNotes ?? null,
       usage: result.response.usageMetadata ?? null,
     });

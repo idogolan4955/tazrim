@@ -6,8 +6,15 @@ import { Nav } from "@/components/nav";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "תזרים",
+  title: {
+    default: "תזרים",
+    template: "%s · תזרים",
+  },
   description: "ניהול תזרים מזומנים ותחזיות עסקיות",
+};
+
+export const viewport = {
+  themeColor: "#1f4df5",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
